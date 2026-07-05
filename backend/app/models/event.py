@@ -5,11 +5,11 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.extensions import db
+from app.db.base import Base
 from app.models.base import UUIDMixin
 
 
-class AuditEvent(UUIDMixin, db.Model):
+class AuditEvent(UUIDMixin, Base):
     """Immutable append-only audit / activity log. Never updated, never deleted."""
 
     __tablename__ = "audit_events"

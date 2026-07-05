@@ -1,61 +1,47 @@
 import uuid
 
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
-from pydantic import ValidationError
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from app.api.deps import check_entity_permission, get_current_user
-from app.extensions import db
+from app.api.deps import CurrentUser, DbSession, check_entity_permission
 from app.models.entity import Entity
-from app.models.membership import Membership, MemberRole
-from app.models.user import User, UserRole
+from app.models.membership import MemberRole, Membership
+from app.models.user import User
 from app.schemas.membership import MemberInvite, MemberRead, MemberRoleUpdate
 
-bp = Blueprint("members", __name__, url_prefix="/api/v1/entities")
+router = APIRouter(prefix="/api/v1/entities", tags=["members"])
 
 
-@bp.get("/<entity_id>/members")
-@jwt_required()
-def list_members(entity_id: str):
-    current_user = get_current_user()
-    entity = _get_entity_or_404(entity_id)
-    check_entity_permission(entity, current_user)
+@router.get("/{entity_id}/members", response_model=list[MemberRead])
+def list_members(entity_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    entity = _get_entity_or_404(db, entity_id)
+    check_entity_permission(entity, current_user, db)
 
-    memberships = db.session.scalars(
-        select(Membership).where(Membership.entity_id == entity.id)
-    ).all()
-    return jsonify([MemberRead.from_membership(m).model_dump(mode="json") for m in memberships])
+    memberships = db.scalars(select(Membership).where(Membership.entity_id == entity.id)).all()
+    return [MemberRead.from_membership(m) for m in memberships]
 
 
-@bp.post("/<entity_id>/members")
-@jwt_required()
-def invite_member(entity_id: str):
-    current_user = get_current_user()
-    entity = _get_entity_or_404(entity_id)
+@router.post("/{entity_id}/members", response_model=MemberRead, status_code=201)
+def invite_member(entity_id: uuid.UUID, payload: MemberInvite, current_user: CurrentUser, db: DbSession):
+    entity = _get_entity_or_404(db, entity_id)
     # Only owner or admin can invite
-    check_entity_permission(entity, current_user, require_owner_or_admin=True)
+    check_entity_permission(entity, current_user, db, require_owner_or_admin=True)
 
-    try:
-        payload = MemberInvite.model_validate(request.get_json())
-    except ValidationError as e:
-        return jsonify(detail=e.errors()), 422
-
-    target_user = db.session.scalar(select(User).where(User.email == payload.email))
+    target_user = db.scalar(select(User).where(User.email == payload.email))
     if not target_user:
-        return jsonify(detail="No user found with that email address"), 404
+        raise HTTPException(status_code=404, detail="No user found with that email address")
 
     if target_user.id == entity.owner_id:
-        return jsonify(detail="Cannot invite the entity owner as a member"), 409
+        raise HTTPException(status_code=409, detail="Cannot invite the entity owner as a member")
 
-    existing = db.session.scalar(
+    existing = db.scalar(
         select(Membership).where(
             Membership.entity_id == entity.id,
             Membership.user_id == target_user.id,
         )
     )
     if existing:
-        return jsonify(detail="User is already a member"), 409
+        raise HTTPException(status_code=409, detail="User is already a member")
 
     membership = Membership(
         entity_id=entity.id,
@@ -63,7 +49,7 @@ def invite_member(entity_id: str):
         role=payload.role,
         invited_by=current_user.id,
     )
-    db.session.add(membership)
+    db.add(membership)
 
     # When adding a member to a board, ensure they can also see the parent workspace
     if entity.entity_type == "board" and entity.metadata_:
@@ -74,86 +60,76 @@ def invite_member(entity_id: str):
             except (ValueError, AttributeError):
                 workspace_id = None
             if workspace_id:
-                workspace = db.session.scalar(
+                workspace = db.scalar(
                     select(Entity).where(Entity.id == workspace_id, Entity.is_deleted.is_(False))
                 )
                 if workspace and workspace.owner_id != target_user.id:
-                    existing_ws = db.session.scalar(
+                    existing_ws = db.scalar(
                         select(Membership).where(
                             Membership.entity_id == workspace_id,
                             Membership.user_id == target_user.id,
                         )
                     )
                     if not existing_ws:
-                        db.session.add(Membership(
+                        db.add(Membership(
                             entity_id=workspace_id,
                             user_id=target_user.id,
                             role=MemberRole.viewer,
                             invited_by=current_user.id,
                         ))
 
-    db.session.commit()
-    db.session.refresh(membership)
-    return jsonify(MemberRead.from_membership(membership).model_dump(mode="json")), 201
+    db.commit()
+    db.refresh(membership)
+    return MemberRead.from_membership(membership)
 
 
-@bp.patch("/<entity_id>/members/<member_user_id>")
-@jwt_required()
-def update_member_role(entity_id: str, member_user_id: str):
-    current_user = get_current_user()
-    entity = _get_entity_or_404(entity_id)
-    check_entity_permission(entity, current_user, require_owner_or_admin=True)
+@router.patch("/{entity_id}/members/{member_user_id}", response_model=MemberRead)
+def update_member_role(
+    entity_id: uuid.UUID,
+    member_user_id: uuid.UUID,
+    payload: MemberRoleUpdate,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    entity = _get_entity_or_404(db, entity_id)
+    check_entity_permission(entity, current_user, db, require_owner_or_admin=True)
 
-    try:
-        payload = MemberRoleUpdate.model_validate(request.get_json())
-    except ValidationError as e:
-        return jsonify(detail=e.errors()), 422
-
-    membership = _get_membership_or_404(entity.id, uuid.UUID(member_user_id))
+    membership = _get_membership_or_404(db, entity.id, member_user_id)
     membership.role = payload.role
-    db.session.commit()
-    db.session.refresh(membership)
-    return jsonify(MemberRead.from_membership(membership).model_dump(mode="json"))
+    db.commit()
+    db.refresh(membership)
+    return MemberRead.from_membership(membership)
 
 
-@bp.delete("/<entity_id>/members/<member_user_id>")
-@jwt_required()
-def remove_member(entity_id: str, member_user_id: str):
-    current_user = get_current_user()
-    entity = _get_entity_or_404(entity_id)
-
-    target_uid = uuid.UUID(member_user_id)
+@router.delete("/{entity_id}/members/{member_user_id}", status_code=204)
+def remove_member(entity_id: uuid.UUID, member_user_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    entity = _get_entity_or_404(db, entity_id)
 
     # Allow self-removal or owner/admin removal
-    if current_user.id != target_uid:
-        check_entity_permission(entity, current_user, require_owner_or_admin=True)
+    if current_user.id != member_user_id:
+        check_entity_permission(entity, current_user, db, require_owner_or_admin=True)
 
-    membership = _get_membership_or_404(entity.id, target_uid)
-    db.session.delete(membership)
-    db.session.commit()
-    return "", 204
+    membership = _get_membership_or_404(db, entity.id, member_user_id)
+    db.delete(membership)
+    db.commit()
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _get_entity_or_404(entity_id: str) -> Entity:
-    entity = db.session.scalar(
-        select(Entity).where(Entity.id == uuid.UUID(entity_id), Entity.is_deleted.is_(False))
-    )
+def _get_entity_or_404(db: DbSession, entity_id: uuid.UUID) -> Entity:
+    entity = db.scalar(select(Entity).where(Entity.id == entity_id, Entity.is_deleted.is_(False)))
     if not entity:
-        from flask import abort
-        abort(404, description="Entity not found")
+        raise HTTPException(status_code=404, detail="Entity not found")
     return entity
 
 
-def _get_membership_or_404(entity_id: uuid.UUID, user_id: uuid.UUID) -> Membership:
-    membership = db.session.scalar(
+def _get_membership_or_404(db: DbSession, entity_id: uuid.UUID, user_id: uuid.UUID) -> Membership:
+    membership = db.scalar(
         select(Membership).where(
             Membership.entity_id == entity_id,
             Membership.user_id == user_id,
         )
     )
     if not membership:
-        from flask import abort
-        abort(404, description="Member not found")
+        raise HTTPException(status_code=404, detail="Member not found")
     return membership

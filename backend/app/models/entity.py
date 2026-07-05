@@ -5,7 +5,7 @@ from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.extensions import db
+from app.db.base import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 
@@ -16,7 +16,7 @@ class EntityStatus(str, enum.Enum):
     archived = "archived"
 
 
-class Entity(UUIDMixin, TimestampMixin, db.Model):
+class Entity(UUIDMixin, TimestampMixin, Base):
     """Generic extensible entity — can represent tasks, workflows, experiments, etc."""
 
     __tablename__ = "entities"

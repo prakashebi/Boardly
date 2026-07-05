@@ -9,7 +9,7 @@ The platform focuses on structured data, real-time updates, searchability, and f
 
 ⚠️ Work in Progress (early prototype)
 
-- Project setup (Flask + React)
+- Project setup (FastAPI + React)
 - Authentication (JWT-based)
 - Core entity management (workspaces, boards, columns, cards)
 - Extensible metadata schema (JSONB)
@@ -43,7 +43,7 @@ Orqestra addresses these gaps by introducing:
 ## 🏗️ Architecture Overview
 
 ### Core Components
-- **Backend:** Flask (Python)
+- **Backend:** FastAPI (Python)
 - **Frontend:** React + TypeScript + Vite
 - **Database:** PostgreSQL
 - **Search:** PostgreSQL FTS (default, zero extra infra) or OpenSearch (optional, for scale)
@@ -55,7 +55,7 @@ Orqestra addresses these gaps by introducing:
 ```
 (Client - React)
         ↓
-(Flask Backend / API Layer)
+(FastAPI Backend / API Layer)
         ↓
 (Event Layer - Planned)
    ↓              ↓
@@ -92,8 +92,8 @@ repo-root/
 │
 ├── backend/
 │   ├── app/
-│   │   ├── main.py               # Flask app factory
-│   │   ├── extensions.py         # db, jwt, cors
+│   │   ├── main.py               # FastAPI app factory
+│   │   ├── db/                   # SQLAlchemy engine, session, declarative base
 │   │   ├── api/
 │   │   │   ├── deps.py           # auth decorators
 │   │   │   ├── routes.py         # blueprint registration
@@ -201,7 +201,7 @@ This starts three services:
 | Service | URL | Description |
 |---|---|---|
 | `frontend` | http://localhost:3000 | React UI |
-| `backend` | http://localhost:8000 | Flask API |
+| `backend` | http://localhost:8000 | FastAPI API |
 | `db` | localhost:5432 | PostgreSQL |
 
 ### 4. Register and log in
@@ -378,7 +378,7 @@ Open http://localhost:3000. The Vite dev server proxies all `/api` requests to `
 - Dockerfile for frontend (production build with Nginx)
 - User assignment to cards and boards
 - Bulk re-index script to backfill existing entities into OpenSearch
-- Real-time cross-member updates — card and list changes broadcast live to all board members via WebSockets (Flask-SocketIO), eliminating the need to reload the page
+- Real-time cross-member updates — card and list changes broadcast live to all board members via WebSockets (FastAPI's native WebSocket support), eliminating the need to reload the page
 
 ### Mid-term
 - Activity stream (event-driven)
