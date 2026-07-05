@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 
-_ADMIN_EMAIL = "admin@orqestra.local"
+_ADMIN_EMAIL = "admin@boardly.local"
 _ADMIN_USERNAME = "admin"
 _ADMIN_PASSWORD = "admin"
 

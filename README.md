@@ -1,6 +1,6 @@
-# Orqestra - An event-driven collaboration and workflow platform
+# Boardly - An event-driven collaboration and workflow platform
 
-Orqestra is an actively developed platform for orchestrating workflows, entities, and collaboration in real time. It is designed with an event-driven architecture to support scalable, distributed systems across research and enterprise environments.
+Boardly is an actively developed platform for orchestrating workflows, entities, and collaboration in real time. It is designed with an event-driven architecture to support scalable, distributed systems across research and enterprise environments.
 
 The platform focuses on structured data, real-time updates, searchability, and full auditability of system activity.
 
@@ -30,7 +30,7 @@ Modern collaboration and workflow systems often suffer from:
 - Lack of real-time collaboration capabilities
 - Tight coupling between components (hard to scale)
 
-Orqestra addresses these gaps by introducing:
+Boardly addresses these gaps by introducing:
 
 - An event-driven architecture
 - Extensible entity models (not limited to tasks)
@@ -158,7 +158,7 @@ repo-root/
 
 ```bash
 git clone <repo-url>
-cd Orqestra
+cd Boardly
 ```
 
 ### 2. Configure environment
@@ -265,7 +265,7 @@ The backend volume mounts `./backend` into the container so Python changes are r
 
 ## 🔍 Search Backends
 
-Orqestra ships with a pluggable search layer. You choose the backend based on your available compute resources.
+Boardly ships with a pluggable search layer. You choose the backend based on your available compute resources.
 
 | Backend | When to use | Extra infra |
 |---|---|---|
@@ -312,7 +312,7 @@ OPENSEARCH_PASSWORD=your-opensearch-password
 docker compose restart backend
 ```
 
-The backend will connect to OpenSearch on startup, create the `orqestra_entities` index if it does not exist, and begin indexing new and updated entities automatically.
+The backend will connect to OpenSearch on startup, create the `boardly_entities` index if it does not exist, and begin indexing new and updated entities automatically.
 
 #### 4. Verify the connection
 
@@ -320,13 +320,13 @@ Check the backend logs:
 
 ```bash
 docker compose logs backend | grep -i opensearch
-# Expected: Created OpenSearch index 'orqestra_entities'
+# Expected: Created OpenSearch index 'boardly_entities'
 ```
 
 Or query the index directly:
 
 ```bash
-curl -sk https://localhost:9200/orqestra_entities/_count \
+curl -sk https://localhost:9200/boardly_entities/_count \
   -u admin:your-opensearch-password | python3 -m json.tool
 ```
 

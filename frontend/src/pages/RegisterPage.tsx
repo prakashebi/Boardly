@@ -46,7 +46,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 to-slate-100 p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-2 text-4xl font-bold text-indigo-700">Orqestra</div>
+          <div className="mb-2 text-4xl font-bold text-indigo-700">Boardly</div>
           <p className="text-sm text-gray-500">Create your account</p>
         </div>
 

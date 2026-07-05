@@ -1,6 +1,6 @@
 # Frontend (React)
 
-React-based UI for the Orqestra - An event-driven collaboration and workflow platform
+React-based UI for Boardly - An event-driven collaboration and workflow platform
 
 User interface for the following:
 - Authentication (login/register)

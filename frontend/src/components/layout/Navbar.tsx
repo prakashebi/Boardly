@@ -27,7 +27,7 @@ export default function Navbar({ breadcrumbs = [], actions }: Props) {
       <div className="flex items-center gap-2 text-sm">
         <Link to="/" className="flex items-center gap-1.5 font-semibold text-white hover:text-indigo-200">
           <LayoutGrid size={18} />
-          <span>Orqestra</span>
+          <span>Boardly</span>
         </Link>
         {breadcrumbs.map((crumb, i) => (
           <span key={i} className="flex items-center gap-2">
