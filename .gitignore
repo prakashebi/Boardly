@@ -19,6 +19,7 @@ venv/
 env/
 .env
 *.env
+.claude/
 
 # ── Alembic ───────────────────────────────────────────────────────────────────
 # keep versions/ tracked; ignore only generated temp files

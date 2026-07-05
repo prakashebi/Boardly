@@ -1,13 +1,10 @@
 import uuid
 
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import jwt_required
-from pydantic import ValidationError
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
-from app.api.deps import check_entity_permission, get_current_user, require_write_access
-from app.extensions import db
+from app.api.deps import CurrentUser, DbSession, check_entity_permission, require_write_access
 from app.models.entity import Entity, EntityStatus
 from app.models.event import AuditEvent
 from app.models.membership import Membership
@@ -15,19 +12,20 @@ from app.models.user import UserRole
 from app.schemas.entity import EntityCreate, EntityListResponse, EntityRead, EntityUpdate
 from app.services.search import get_search_service
 
-bp = Blueprint("entities", __name__, url_prefix="/api/v1/entities")
+router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
 
-@bp.get("")
-@jwt_required()
-def list_entities():
-    current_user = get_current_user()
-
-    entity_type = request.args.get("entity_type")
-    status = request.args.get("status")
-    q = request.args.get("q")
-    skip = int(request.args.get("skip", 0))
-    limit = min(int(request.args.get("limit", 50)), 200)
+@router.get("", response_model=EntityListResponse)
+def list_entities(
+    current_user: CurrentUser,
+    db: DbSession,
+    entity_type: str | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    skip: int = 0,
+    limit: int = 50,
+):
+    limit = min(limit, 200)
 
     stmt = select(Entity).where(Entity.is_deleted.is_(False))
 
@@ -66,30 +64,19 @@ def list_entities():
             limit=200,
         )
         if not results:
-            return jsonify(EntityListResponse(total=0, items=[]).model_dump(mode="json", by_alias=True))
+            return EntityListResponse(total=0, items=[])
         matching_ids = [uuid.UUID(r.entity_id) for r in results]
         stmt = stmt.where(Entity.id.in_(matching_ids))
 
-    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = db.session.scalars(stmt.offset(skip).limit(limit)).all()
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.scalars(stmt.offset(skip).limit(limit)).all()
 
-    result = EntityListResponse(
-        total=total or 0,
-        items=[EntityRead.model_validate(r) for r in rows],
-    )
-    return jsonify(result.model_dump(mode="json", by_alias=True))
+    return EntityListResponse(total=total or 0, items=[EntityRead.model_validate(r) for r in rows])
 
 
-@bp.post("")
-@jwt_required()
-def create_entity():
-    current_user = get_current_user()
+@router.post("", response_model=EntityRead, status_code=201)
+def create_entity(payload: EntityCreate, current_user: CurrentUser, db: DbSession):
     require_write_access(current_user)  # viewers cannot create
-
-    try:
-        payload = EntityCreate.model_validate(request.get_json())
-    except ValidationError as e:
-        return jsonify(detail=e.errors()), 422
 
     entity = Entity(
         entity_type=payload.entity_type,
@@ -99,56 +86,42 @@ def create_entity():
         metadata_=payload.metadata,
         owner_id=current_user.id,
     )
-    db.session.add(entity)
-    db.session.add(AuditEvent(
+    db.add(entity)
+    db.add(AuditEvent(
         event_type="entity.created",
         actor_id=current_user.id,
         entity_type=payload.entity_type,
         payload={"title": payload.title},
     ))
-    db.session.commit()
-    db.session.refresh(entity)
+    db.commit()
+    db.refresh(entity)
 
     get_search_service().index_entity(
         str(entity.id), entity.entity_type, entity.title, entity.description, entity.metadata_
     )
 
-    return jsonify(EntityRead.model_validate(entity).model_dump(mode="json", by_alias=True)), 201
+    return entity
 
 
-@bp.get("/<entity_id>")
-@jwt_required()
-def get_entity(entity_id: str):
-    current_user = get_current_user()
-
-    entity = db.session.scalar(
-        select(Entity).where(Entity.id == uuid.UUID(entity_id), Entity.is_deleted.is_(False))
-    )
+@router.get("/{entity_id}", response_model=EntityRead)
+def get_entity(entity_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    entity = db.scalar(select(Entity).where(Entity.id == entity_id, Entity.is_deleted.is_(False)))
     if not entity:
-        return jsonify(detail="Entity not found"), 404
+        raise HTTPException(status_code=404, detail="Entity not found")
 
-    check_entity_permission(entity, current_user)
-    return jsonify(EntityRead.model_validate(entity).model_dump(mode="json", by_alias=True))
+    check_entity_permission(entity, current_user, db)
+    return entity
 
 
-@bp.patch("/<entity_id>")
-@jwt_required()
-def update_entity(entity_id: str):
-    current_user = get_current_user()
+@router.patch("/{entity_id}", response_model=EntityRead)
+def update_entity(entity_id: uuid.UUID, payload: EntityUpdate, current_user: CurrentUser, db: DbSession):
     require_write_access(current_user)
 
-    try:
-        payload = EntityUpdate.model_validate(request.get_json())
-    except ValidationError as e:
-        return jsonify(detail=e.errors()), 422
-
-    entity = db.session.scalar(
-        select(Entity).where(Entity.id == uuid.UUID(entity_id), Entity.is_deleted.is_(False))
-    )
+    entity = db.scalar(select(Entity).where(Entity.id == entity_id, Entity.is_deleted.is_(False)))
     if not entity:
-        return jsonify(detail="Entity not found"), 404
+        raise HTTPException(status_code=404, detail="Entity not found")
 
-    check_entity_permission(entity, current_user)
+    check_entity_permission(entity, current_user, db)
 
     updated_fields: dict = {}
     for field, value in payload.model_dump(exclude_none=True).items():
@@ -158,47 +131,41 @@ def update_entity(entity_id: str):
             setattr(entity, field, value)
         updated_fields[field] = value
 
-    db.session.add(AuditEvent(
+    db.add(AuditEvent(
         event_type="entity.updated",
         actor_id=current_user.id,
         entity_id=entity.id,
         entity_type=entity.entity_type,
         payload=updated_fields,
     ))
-    db.session.commit()
-    db.session.refresh(entity)
+    db.commit()
+    db.refresh(entity)
 
     get_search_service().update_entity(
         str(entity.id), entity.title, entity.description, entity.metadata_
     )
 
-    return jsonify(EntityRead.model_validate(entity).model_dump(mode="json", by_alias=True))
+    return entity
 
 
-@bp.delete("/<entity_id>")
-@jwt_required()
-def delete_entity(entity_id: str):
-    current_user = get_current_user()
+@router.delete("/{entity_id}", status_code=204)
+def delete_entity(entity_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     require_write_access(current_user)
 
-    entity = db.session.scalar(
-        select(Entity).where(Entity.id == uuid.UUID(entity_id), Entity.is_deleted.is_(False))
-    )
+    entity = db.scalar(select(Entity).where(Entity.id == entity_id, Entity.is_deleted.is_(False)))
     if not entity:
-        return jsonify(detail="Entity not found"), 404
+        raise HTTPException(status_code=404, detail="Entity not found")
 
-    check_entity_permission(entity, current_user, require_owner_or_admin=True)
+    check_entity_permission(entity, current_user, db, require_owner_or_admin=True)
 
     entity.is_deleted = True
-    db.session.add(AuditEvent(
+    db.add(AuditEvent(
         event_type="entity.deleted",
         actor_id=current_user.id,
         entity_id=entity.id,
         entity_type=entity.entity_type,
         payload={"title": entity.title},
     ))
-    db.session.commit()
+    db.commit()
 
     get_search_service().delete_entity(str(entity.id))
-
-    return "", 204

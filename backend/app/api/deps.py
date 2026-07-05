@@ -1,46 +1,48 @@
 import uuid
-from functools import wraps
+from typing import Annotated
 
-from flask import abort, jsonify
-from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.extensions import db
+from app.core.config import get_settings
+from app.core.security import decode_access_token
+from app.db.session import get_db
 from app.models.user import User, UserRole
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-def get_current_user() -> User:
-    """Resolve the JWT identity to a User row. Call inside a @jwt_required() route."""
-    user_id = get_jwt_identity()
-    return db.session.get(User, uuid.UUID(user_id))
+DbSession = Annotated[Session, Depends(get_db)]
+
+
+def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DbSession) -> User:
+    """Resolve the bearer token to a User row, or raise 401."""
+    user_id = decode_access_token(token, get_settings())
+    user = db.get(User, uuid.UUID(user_id)) if user_id else None
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def roles_required(*roles: UserRole):
-    """Decorator: enforce JWT auth + role membership."""
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            verify_jwt_in_request()
-            user = get_current_user()
-            if not user or not user.is_active:
-                return jsonify(detail="User not found"), 401
-            if user.role not in roles:
-                return jsonify(detail="Insufficient permissions"), 403
-            return fn(*args, **kwargs)
-        return wrapper
-    return decorator
+    """Dependency factory: enforce auth + active status + role membership."""
+    def checker(current_user: CurrentUser) -> User:
+        if not current_user.is_active:
+            raise HTTPException(status_code=401, detail="User not found")
+        if current_user.role not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+    return checker
 
 
-def check_entity_access(entity_owner_id: uuid.UUID | None, current_user: User) -> None:
-    """Abort 403 if a non-admin user does not own the entity."""
-    if current_user.role == UserRole.admin:
-        return
-    if entity_owner_id != current_user.id:
-        abort(403, description="Access denied: you do not own this resource")
-
-
-def check_entity_permission(entity, current_user: User, require_owner_or_admin: bool = False) -> None:
-    """Abort 403 if user has no access to the entity.
+def check_entity_permission(
+    entity, current_user: User, db: Session, require_owner_or_admin: bool = False
+) -> None:
+    """Raise 403 if user has no access to the entity.
 
     Admins pass unconditionally. Owners always pass. Members pass unless
     require_owner_or_admin=True (used for invite/remove operations).
@@ -56,9 +58,9 @@ def check_entity_permission(entity, current_user: User, require_owner_or_admin: 
         return
 
     if require_owner_or_admin:
-        abort(403, description="Only the entity owner or an admin can perform this action")
+        raise HTTPException(status_code=403, detail="Only the entity owner or an admin can perform this action")
 
-    membership = db.session.scalar(
+    membership = db.scalar(
         select(Membership).where(
             Membership.entity_id == entity.id,
             Membership.user_id == current_user.id,
@@ -76,13 +78,13 @@ def check_entity_permission(entity, current_user: User, require_owner_or_admin: 
             except (ValueError, AttributeError):
                 board_id = None
             if board_id:
-                board = db.session.scalar(
+                board = db.scalar(
                     select(Entity).where(Entity.id == board_id, Entity.is_deleted.is_(False))
                 )
                 if board:
                     if board.owner_id == current_user.id:
                         return
-                    board_membership = db.session.scalar(
+                    board_membership = db.scalar(
                         select(Membership).where(
                             Membership.entity_id == board_id,
                             Membership.user_id == current_user.id,
@@ -91,10 +93,10 @@ def check_entity_permission(entity, current_user: User, require_owner_or_admin: 
                     if board_membership:
                         return
 
-    abort(403, description="Access denied: you are not a member of this entity")
+    raise HTTPException(status_code=403, detail="Access denied: you are not a member of this entity")
 
 
 def require_write_access(current_user: User) -> None:
-    """Abort 403 if the user has viewer (read-only) role."""
+    """Raise 403 if the user has viewer (read-only) role."""
     if current_user.role == UserRole.viewer:
-        abort(403, description="Viewers have read-only access")
+        raise HTTPException(status_code=403, detail="Viewers have read-only access")

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, Enum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.extensions import db
+from app.db.base import Base
 
 
 class MemberRole(str, enum.Enum):
@@ -13,7 +13,7 @@ class MemberRole(str, enum.Enum):
     viewer = "viewer"
 
 
-class Membership(db.Model):
+class Membership(Base):
     __tablename__ = "memberships"
     __table_args__ = (UniqueConstraint("entity_id", "user_id", name="uq_membership_entity_user"),)
 

@@ -1,6 +1,6 @@
 from sqlalchemy import func, select
 
-from app.extensions import db
+from app.db.session import SessionLocal
 from app.models.entity import Entity
 
 from .base import SearchResult, SearchService
@@ -38,7 +38,8 @@ class PostgresSearchService(SearchService):
         if entity_types:
             stmt = stmt.where(Entity.entity_type.in_(entity_types))
 
-        rows = db.session.execute(stmt).all()
+        with SessionLocal() as db:
+            rows = db.execute(stmt).all()
         return [
             SearchResult(
                 entity_id=str(row.Entity.id),
