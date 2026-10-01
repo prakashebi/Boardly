@@ -9,7 +9,7 @@ The platform focuses on structured data, real-time updates, searchability, and f
 
 ⚠️ Work in Progress (early prototype)
 
-- Project setup (FastAPI + React)
+- Project setup (Django + React)
 - Authentication (JWT-based)
 - Core entity management (workspaces, boards, columns, cards)
 - Extensible metadata schema (JSONB)
@@ -43,7 +43,7 @@ Orqestra addresses these gaps by introducing:
 ## 🏗️ Architecture Overview
 
 ### Core Components
-- **Backend:** FastAPI (Python)
+- **Backend:** Django + Django REST Framework (Python)
 - **Frontend:** React + TypeScript + Vite
 - **Database:** PostgreSQL
 - **Search:** PostgreSQL FTS (default, zero extra infra) or OpenSearch (optional, for scale)
@@ -55,7 +55,7 @@ Orqestra addresses these gaps by introducing:
 ```
 (Client - React)
         ↓
-(FastAPI Backend / API Layer)
+(Django REST API)
         ↓
 (Event Layer - Planned)
    ↓              ↓
@@ -91,30 +91,29 @@ Orqestra addresses these gaps by introducing:
 repo-root/
 │
 ├── backend/
-│   ├── app/
-│   │   ├── main.py               # FastAPI app factory
-│   │   ├── db/                   # SQLAlchemy engine, session, declarative base
-│   │   ├── api/
-│   │   │   ├── deps.py           # auth decorators
-│   │   │   ├── routes.py         # blueprint registration
-│   │   │   └── v1/
-│   │   │       ├── auth.py
-│   │   │       ├── users.py
-│   │   │       ├── entities.py
-│   │   │       ├── members.py
-│   │   │       └── events.py
-│   │   ├── core/
-│   │   │   ├── config.py         # pydantic-settings (incl. SEARCH_BACKEND)
-│   │   │   └── security.py       # password hashing
-│   │   ├── models/               # SQLAlchemy models
-│   │   ├── schemas/              # Pydantic schemas
-│   │   └── services/
-│   │       └── search/
-│   │           ├── base.py           # SearchService ABC + SearchResult
-│   │           ├── postgres.py       # PostgreSQL FTS implementation
-│   │           ├── opensearch_service.py  # OpenSearch implementation
-│   │           └── factory.py        # resolves backend from SEARCH_BACKEND env var
-│   ├── server.py                 # entrypoint
+│   ├── config/
+│   │   ├── settings.py           # Django settings (incl. SEARCH_BACKEND)
+│   │   ├── urls.py               # URL routing
+│   │   ├── wsgi.py
+│   │   └── asgi.py
+│   ├── core/
+│   │   ├── models.py             # Django ORM models
+│   │   ├── serializers.py        # DRF serializers
+│   │   ├── views.py              # DRF views (auth, entities, members, etc.)
+│   │   ├── urls.py               # API v1 routes
+│   │   ├── authentication.py     # JWT Bearer token auth
+│   │   ├── permissions.py        # Role-based permissions
+│   │   ├── security.py           # Password hashing & JWT functions
+│   │   ├── exceptions.py         # Custom exception handlers
+│   │   ├── migrations/           # Django migrations
+│   │   ├── management/commands/
+│   │   │   └── seed_admin.py     # Management command to seed default admin
+│   │   └── search/
+│   │       ├── base.py               # SearchService ABC + SearchResult
+│   │       ├── postgres.py           # PostgreSQL FTS implementation
+│   │       ├── opensearch_service.py # OpenSearch implementation
+│   │       └── __init__.py           # Factory to resolve backend from SEARCH_BACKEND env var
+│   ├── manage.py                 # Django management entrypoint
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── .env.example
@@ -201,7 +200,7 @@ This starts three services:
 | Service | URL | Description |
 |---|---|---|
 | `frontend` | http://localhost:3000 | React UI |
-| `backend` | http://localhost:8000 | FastAPI API |
+| `backend` | http://localhost:8000 | Django REST API |
 | `db` | localhost:5432 | PostgreSQL |
 
 ### 4. Register and log in
@@ -356,7 +355,8 @@ pip install -r requirements.txt
 
 cp .env.example .env           # then set DATABASE_URL and SECRET_KEY
 
-python server.py
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
 ```
 
 Requires a running PostgreSQL instance. Update `DATABASE_URL` in `.env` accordingly.
@@ -378,7 +378,7 @@ Open http://localhost:3000. The Vite dev server proxies all `/api` requests to `
 - Dockerfile for frontend (production build with Nginx)
 - User assignment to cards and boards
 - Bulk re-index script to backfill existing entities into OpenSearch
-- Real-time cross-member updates — card and list changes broadcast live to all board members via WebSockets (FastAPI's native WebSocket support), eliminating the need to reload the page
+- Real-time cross-member updates — card and list changes broadcast live to all board members via WebSockets, eliminating the need to reload the page
 
 ### Mid-term
 - Activity stream (event-driven)
