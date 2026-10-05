@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from core.models import User, UserRole
 from core.security import hash_password
 
-_ADMIN_EMAIL = "admin@orqestra.local"
+_ADMIN_EMAIL = "admin@boardly.local"
 _ADMIN_USERNAME = "admin"
 _ADMIN_PASSWORD = "admin"
 
