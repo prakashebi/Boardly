@@ -46,7 +46,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # Database
-db_url = os.getenv("DATABASE_URL", "postgresql://orqestra:orqestra@localhost/orqestra")
+db_url = os.getenv("DATABASE_URL", "postgresql://boardly:boardly@localhost/boardly")
 if db_url.startswith("postgresql+psycopg2://"):
     db_url = db_url.replace("postgresql+psycopg2://", "postgresql://", 1)
 DATABASES = {

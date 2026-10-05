@@ -1,6 +1,6 @@
-# Orqestra - An event-driven collaboration and workflow platform
+# Boardly - An event-driven collaboration and workflow platform
 
-Orqestra is an actively developed platform for orchestrating workflows, entities, and collaboration in real time. It is designed with an event-driven architecture to support scalable, distributed systems across research and enterprise environments.
+Boardly is an actively developed platform for orchestrating workflows, entities, and collaboration in real time. It is designed with an event-driven architecture to support scalable, distributed systems across research and enterprise environments.
 
 The platform focuses on structured data, real-time updates, searchability, and full auditability of system activity.
 
@@ -31,7 +31,7 @@ Modern collaboration and workflow systems often suffer from:
 - Lack of real-time collaboration capabilities
 - Tight coupling between components (hard to scale)
 
-Orqestra addresses these gaps by introducing:
+Boardly addresses these gaps by introducing:
 
 - An event-driven architecture
 - Extensible entity models (not limited to tasks)
@@ -158,7 +158,7 @@ repo-root/
 
 ```bash
 git clone <repo-url>
-cd Orqestra
+cd Boardly
 ```
 
 ### 2. Configure environment
@@ -265,7 +265,7 @@ The backend volume mounts `./backend` into the container so Python changes are r
 
 ## 🔍 Search Backends
 
-Orqestra ships with a pluggable search layer. You choose the backend based on your available compute resources.
+Boardly ships with a pluggable search layer. You choose the backend based on your available compute resources.
 
 | Backend | When to use | Extra infra |
 |---|---|---|
@@ -312,7 +312,7 @@ OPENSEARCH_PASSWORD=your-opensearch-password
 docker compose restart backend
 ```
 
-The backend will connect to OpenSearch on startup, create the `orqestra_entities` index if it does not exist, and begin indexing new and updated entities automatically.
+The backend will connect to OpenSearch on startup, create the `Boardly_entities` index if it does not exist, and begin indexing new and updated entities automatically.
 
 #### 4. Verify the connection
 
@@ -320,13 +320,13 @@ Check the backend logs:
 
 ```bash
 docker compose logs backend | grep -i opensearch
-# Expected: Created OpenSearch index 'orqestra_entities'
+# Expected: Created OpenSearch index 'Boardly_entities'
 ```
 
 Or query the index directly:
 
 ```bash
-curl -sk https://localhost:9200/orqestra_entities/_count \
+curl -sk https://localhost:9200/Boardly_entities/_count \
   -u admin:your-opensearch-password | python3 -m json.tool
 ```
 
@@ -370,6 +370,77 @@ npm run dev
 ```
 
 Open http://localhost:3000. The Vite dev server proxies all `/api` requests to `http://localhost:8000`.
+
+
+## 🧪 Testing
+
+Boardly includes a comprehensive test suite with **42 production-grade integration tests** covering authentication, entity operations, permissions, memberships, and audit logging.
+
+### Run Tests
+
+**In Docker (recommended):**
+```bash
+docker-compose exec backend pytest tests/ -v
+```
+
+**With coverage report:**
+```bash
+docker-compose exec backend pytest tests/ --cov=core --cov-report=html
+open htmlcov/index.html
+```
+
+**Specific test:**
+```bash
+docker-compose exec backend pytest tests/test_auth.py::TestAuthentication::test_register_success -v
+```
+
+**Locally (requires venv setup):**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+### Test Coverage
+
+- ✅ **Authentication (6 tests)** — Register, login, password validation
+- ✅ **Entity CRUD (10 tests)** — Create, read, update, delete, pagination, filtering
+- ✅ **Permissions (9 tests)** — Role-based access control (admin/member/viewer)
+- ✅ **Memberships (8 tests)** — Invite members, update roles, remove members
+- ✅ **Audit Logging (9 tests)** — Event creation on mutations, event filtering
+
+**Current Status:** 42/42 passing ✓
+
+### Test Structure
+
+Tests are organized by feature in `/backend/tests/`:
+- `conftest.py` — Fixtures for users, clients, and test entities
+- `test_auth.py` — Authentication endpoints
+- `test_entities.py` — Entity operations
+- `test_permissions.py` — Role-based access control
+- `test_memberships.py` — Member management
+- `test_audit_events.py` — Audit event logging
+
+See [backend/TESTING.md](backend/TESTING.md) for detailed testing patterns and documentation.
+
+### CI/CD Integration
+
+Add to your CI pipeline (GitHub Actions, GitLab CI, etc.):
+```yaml
+- name: Run tests
+  run: |
+    cd backend
+    pip install -r requirements.txt
+    pytest tests/ --tb=short
+```
+
+Or in Docker:
+```yaml
+- name: Run tests
+  run: docker-compose exec backend pytest tests/ -v
+```
 
 
 ## 🛣️ Roadmap

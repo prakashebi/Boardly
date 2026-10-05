@@ -4,7 +4,7 @@ from .base import SearchResult, SearchService
 
 logger = logging.getLogger(__name__)
 
-INDEX_NAME = "orqestra_entities"
+INDEX_NAME = "boardly_entities"
 
 INDEX_MAPPING = {
     "mappings": {
